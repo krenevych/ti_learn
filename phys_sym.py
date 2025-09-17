@@ -23,17 +23,17 @@ indices = ti.field(int, shape=num_triangles * 3)
 vertices = ti.Vector.field(3, dtype=float, shape=n * n)
 colors = ti.Vector.field(3, dtype=float, shape=n * n)
 
-bending_springs = not False
+bending_springs = False
 
 @ti.kernel
 def initialize_mass_points():
-    random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5, ti.random() - 0.5]) * 0.2
+    random_offset = ti.Vector([ti.random() - 0.5, ti.random() - 0.5]) * 0.1
 
     for i, j in x:
         x[i, j] = [
             i * quad_size - 0.5 + random_offset[0],
             0.6,
-            j * quad_size - 0.5 + random_offset[2]
+            j * quad_size - 0.5 + random_offset[1]
         ]
         v[i, j] = [0, 0, 0]
 
