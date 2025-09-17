@@ -5,66 +5,84 @@ import numpy as np
 ti.init(arch=ti.gpu)
 
 # ---- параметри сітки ----
-NX, NY = 30, 20          # вузлів по X і Y
-W, H = 1.2, 0.8          # розмір «тканини» в світових координатах
+WIDTH, HEIGHT = 6, 10           # вузлів по X і Y
+W, H = 1., 1.          # розмір «тканини» в світових координатах
 
-N = NX * NY
-# кількість ребер: (NX-1)*NY (горизонтальні) + (NY-1)*NX (вертикальні)
-E = (NX - 1) * NY + (NY - 1) * NX
-
+num_triangles = (HEIGHT - 1) * (WIDTH - 1) * 2
 # 2) поля Taichi
-pos = ti.Vector.field(3, ti.f32, shape=N)         # позиції вузлів (3D, z=0)
-edges = ti.field(ti.i32, shape=E * 2)             # ПЛОСКИЙ (E*2,) масив індексів (пари)
+positions = ti.Vector.field(3, dtype=ti.f32, shape=(HEIGHT, WIDTH))
+vertices = ti.Vector.field(3, dtype=ti.f32, shape=HEIGHT * WIDTH)
+indices = ti.field(int, shape=num_triangles * 3)
+colors = ti.Vector.field(3, dtype=ti.f32, shape=HEIGHT * WIDTH)
 
-# 3) побудова сітки (на CPU один раз)
-verts = np.empty((N, 3), dtype=np.float32)
-def vid(i, j):  # індекс вузла у плоскому масиві
-    return i + j * NX
+@ti.kernel
+def update():
+    for i, j in ti.ndrange(HEIGHT, WIDTH):
+        vertices[i * WIDTH + j] = positions[i, j]
 
-for j in range(NY):
-    for i in range(NX):
-        x = (i / (NX - 1) - 0.5) * W
-        y = (j / (NY - 1) - 0.5) * H
-        verts[vid(i, j)] = (x, y, 0.0)
+@ti.kernel
+def init_position():
+    for i, j in positions:
+        positions[i, j] = [
+            (i / HEIGHT - 0.5) * W,
+            (j / WIDTH - 0.5) * H,
+            0
+        ]
 
-# ребра: горизонтальні + вертикальні, ПЛОСКО (… a,b, a,b, …)
-ed = np.empty((E, 2), dtype=np.int32)
-k = 0
-# горизонтальні
-for j in range(NY):
-    for i in range(NX - 1):
-        ed[k, 0] = vid(i, j)
-        ed[k, 1] = vid(i + 1, j)
-        k += 1
-# вертикальні
-for j in range(NY - 1):
-    for i in range(NX):
-        ed[k, 0] = vid(i, j)
-        ed[k, 1] = vid(i, j + 1)
-        k += 1
+@ti.kernel
+def initialize_mesh_indices():
+    for i, j in ti.ndrange(HEIGHT - 1, WIDTH - 1):
+        quad_id = (i * (WIDTH - 1)) + j
+        # 1st triangle of the square
+        indices[quad_id * 6 + 0] = i * WIDTH + j
+        indices[quad_id * 6 + 1] = (i + 1) * WIDTH + j
+        indices[quad_id * 6 + 2] = i * WIDTH + (j + 1)
+        # 2nd triangle of the square
+        indices[quad_id * 6 + 3] = (i + 1) * WIDTH + j + 1
+        indices[quad_id * 6 + 4] = i * WIDTH + (j + 1)
+        indices[quad_id * 6 + 5] = (i + 1) * WIDTH + j
 
-pos.from_numpy(verts)
-edges.from_numpy(ed.reshape(-1))   # важливо: зробити плоский (E*2,)
+    for i, j in ti.ndrange(HEIGHT, WIDTH):
+        # colors[i * NX + j] = (1.0, 0.0, 0.0)
+        if (i // 2 + j // 2) % 3 == 0:
+            colors[i * WIDTH + j] = (0.22, 0.72, 0.52)
+        elif (i // 2 + j // 2) % 3 == 1:
+            colors[i * WIDTH + j] = (0, 0.334, 0.52)
+        else:
+            colors[i * WIDTH + j] = (1, 0.334, 0.52)
 
 # 4) вікно/сцена/камера і рендер
-window = ti.ui.Window("Rect Cloth Grid", res=(900, 700))
+window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024), vsync=True)
 canvas = window.get_canvas()
-scene  = window.get_scene()
+canvas.set_background_color((1, 1, 1))
+scene = ti.ui.Scene()
 camera = ti.ui.Camera()
 
+init_position()
+initialize_mesh_indices()
+current_t = 0.0
+dt = 1 / 60.0
+
 while window.running:
+    current_t += dt
+
+    update()
+
     # камера (дивимось трохи зверху)
     camera.position(0.0, 0.2, 2.2)
     camera.lookat(0.0, 0.0, 0.0)
     camera.up(0.0, 1.0, 0.0)
-
     scene.set_camera(camera)
+
     scene.ambient_light((0.8, 0.8, 0.8))
     scene.point_light(pos=(2, 3, 2), color=(1, 1, 1))
 
     # сам малюнок: лінії ребер + (опційно) вузлики як частинки
-    scene.lines(pos, indices=edges, width=1.5, color=(0.95, 0.95, 0.98))
-    # scene.particles(pos, radius=0.005, color=(0.2, 0.6, 1.0))  # розкоментуй щоб бачити вузли
+    scene.particles(vertices, radius=0.005, color=(0.2, 0.6, 1.0))  # розкоментуй щоб бачити вузли
+    scene.mesh(vertices,
+               indices=indices,
+               per_vertex_color=colors,
+               two_sided=True)
 
     canvas.scene(scene)
     window.show()
