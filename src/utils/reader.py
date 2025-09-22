@@ -9,4 +9,3 @@ def load_yaml(path: str | Path) -> dict:
         _cfg = yaml.safe_load(f)  # -> звичайний Python-словник
 
     return _cfg
-
