@@ -1,0 +1,19 @@
+backend: gpu           # gpu|metal|vulkan|cpu
+seed: 0
+smoke:
+  N: 128
+  dt: 0.1
+  jacobi_iters: 40
+  dissipation: 0.999
+flip:
+  res: 128
+  dt: 0.003
+  alpha_flip: 0.05      # FLIP blending (0..1) ~ PIC частка
+  jacobi_iters: 40
+mpm:
+  res: 128
+  dt: 4e-4
+  rho: 1000.0
+  E: 5e4
+  nu: 0.3
+  svd_clamp: [0.6, 1.4]
