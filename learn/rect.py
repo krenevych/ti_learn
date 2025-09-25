@@ -11,7 +11,7 @@ while gui.running:
     # gui.clear(0x112F41)
     gui.clear(0xffff00)
     # чотири ребра
-    # gui.line([x0, y0], [x1, y0], color=0xEEEEF0, radius=2)  # низ
+    gui.line([x0, y0], [x1, y0], color=0xEEEEF0, radius=2)  # низ
     # gui.line([x1, y0], [x1, y1], color=0xEEEEF0, radius=2)  # праве
     # gui.line([x1, y1], [x0, y1], color=0xEEEEF0, radius=2)  # верх
     # gui.line([x0, y1], [x0, y0], color=0xEEEEF0, radius=2)  # ліве

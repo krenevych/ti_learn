@@ -108,12 +108,6 @@ def update_vertices():
     for i, j in ti.ndrange(n, n):
         vertices[i * n + j] = x[i, j]
 
-@ti.kernel
-def my_kernel(x: int, y: float):
-    print("HHHHHHHHHHHHHHH", x + y)
-
-# my_kernel(1, 1.0)  # Prints 2.0
-
 window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024),
                       vsync=True)
 canvas = window.get_canvas()

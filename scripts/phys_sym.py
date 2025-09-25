@@ -1,21 +1,9 @@
 import taichi as ti
 
+from src.utils.parser import backend
 from src.utils.reader import load_yaml
 
-
-def backend(name):
-    mapping = {
-        "cpu": ti.cpu,
-        "gpu": ti.gpu,
-        "metal": ti.metal,
-        "vulkan": ti.vulkan, "vk": ti.vulkan,
-        "cuda": ti.cuda,
-        "opengl": ti.opengl, "gl": ti.opengl,
-    }
-
-    return mapping[name]
-
-
+# Configuration
 cfg = load_yaml("../configs/cloth_params.yaml")
 
 ti.init(arch=backend(cfg["backend"]))
@@ -30,6 +18,7 @@ spring_Y = 3e4
 dashpot_damping = 1e4
 drag_damping = 1
 
+# Ball configuration
 ball_radius = cfg["ball"]["radius"]
 ball_center = ti.Vector.field(3, dtype=float, shape=(1,))
 ball_center[0] = cfg["ball"]["center"]
@@ -132,14 +121,9 @@ def update_vertices():
         vertices[i * n + j] = x[i, j]
 
 
-@ti.kernel
-def my_kernel(x: int, y: float):
-    print("HHHHHHHHHHHHHHH", x + y)
-
-
-# my_kernel(1, 1.0)  # Prints 2.0
-
-window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024),
+resolution = tuple(cfg["window"]["resolution"])
+window = ti.ui.Window("Taichi Cloth Simulation on GGUI",
+                      resolution,  # (1024, 1024),
                       vsync=True)
 canvas = window.get_canvas()
 canvas.set_background_color((1, 1, 1))
@@ -148,6 +132,10 @@ camera = ti.ui.Camera()
 
 current_t = 0.0
 initialize_mass_points()
+
+camera.position(*cfg["camera"]["position"])
+camera.lookat(*cfg["camera"]["lookat"])
+scene.set_camera(camera)
 
 while window.running:
     if current_t > 1.5:
@@ -160,12 +148,13 @@ while window.running:
         current_t += dt
     update_vertices()
 
-    camera.position(0.0, 0.0, 3)
-    camera.lookat(0.0, 0.0, 0)
-    scene.set_camera(camera)
+    scene.point_light(
+        pos=tuple(cfg["light"]["point"]["position"]),
+        color=tuple(cfg["light"]["point"]["color"])
+    )
 
-    scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
-    scene.ambient_light((0.5, 0.5, 0.5))
+    scene.ambient_light(cfg["light"]["ambient"]["color"])
+
     scene.mesh(vertices,
                indices=indices,
                per_vertex_color=colors,
