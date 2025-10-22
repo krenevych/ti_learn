@@ -32,13 +32,6 @@ vorticity = ti.field(dtype=ti.f32, shape=(Nx, Ny))
 # Visualization field (RGB)
 display_field = ti.Vector.field(3, dtype=ti.f32, shape=(Nx, Ny))
 
-# Physical quantities for display
-avg_velocity   = ti.field(dtype=ti.f32, shape=())
-max_velocity   = ti.field(dtype=ti.f32, shape=())
-avg_density    = ti.field(dtype=ti.f32, shape=())
-kinetic_energy = ti.field(dtype=ti.f32, shape=())
-max_vorticity  = ti.field(dtype=ti.f32, shape=())
-
 @ti.kernel
 def init_simulation(initial_velocity: ti.f32):
     """Initialize the simulation fields"""
@@ -134,33 +127,6 @@ def compute_vorticity():
             vorticity[i, j] = duy_dx - dux_dy
         else:
             vorticity[i, j] = 0.0
-
-@ti.kernel
-def compute_statistics():
-    """Compute physical quantities for display"""
-    vel_sum = 0.0
-    vel_max = 0.0
-    rho_sum = 0.0
-    ke_sum = 0.0
-    vort_max = 0.0
-    count = 0
-
-    for i, j in ti.ndrange(Nx, Ny):
-        if cylinder[i, j] == 0:
-            vel = ti.sqrt(ux[i, j]**2 + uy[i, j]**2)
-            vel_sum += vel
-            vel_max = ti.max(vel_max, vel)
-            rho_sum += rho[i, j]
-            ke_sum += rho[i, j] * (ux[i, j]**2 + uy[i, j]**2) / 2.0
-            vort_max = ti.max(vort_max, ti.abs(vorticity[i, j]))
-            count += 1
-
-    if count > 0:
-        avg_velocity[None] = vel_sum / count
-        avg_density[None] = rho_sum / count
-        kinetic_energy[None] = ke_sum / count
-    max_velocity[None] = vel_max
-    max_vorticity[None] = vort_max
 
 @ti.func
 def colormap_jet(value: ti.f32) -> ti.math.vec3:
@@ -305,7 +271,6 @@ def main():
 
         # Update visualization every frame
         compute_vorticity()
-        compute_statistics()
 
         # Set visualization range based on mode
         if vis_mode == 0:  # Velocity magnitude
@@ -321,55 +286,9 @@ def main():
 
         # Display the field
         canvas.set_image(display_field)
-
-        # Calculate FPS
-        elapsed = time.time() - start_time
-        fps = frame_count / elapsed if elapsed > 0 else 0
-
-        # Display statistics and controls
-        window.GUI.begin("Physical Quantities", 0.02, 0.02, 0.35, 0.65)
-        window.GUI.text(f"Step: {frame_count}")
-        window.GUI.text(f"FPS: {fps:.1f}")
-        window.GUI.text(f"Status: {'PAUSED' if paused else 'Running'}")
-        window.GUI.text(f"Mode: {mode_names[vis_mode]}")
-        window.GUI.text("")
-
-        window.GUI.text("Physical Quantities:")
-        window.GUI.text(f"Avg Velocity: {avg_velocity[None]:.6f}")
-        window.GUI.text(f"Max Velocity: {max_velocity[None]:.6f}")
-        window.GUI.text(f"Avg Density: {avg_density[None]:.6f}")
-        window.GUI.text(f"Kinetic Energy: {kinetic_energy[None]:.6f}")
-        window.GUI.text(f"Max Vorticity: {max_vorticity[None]:.6f}")
-        reynolds = initial_velocity * 2 * cylinder_r / ((current_tau - 0.5) / 3)
-        window.GUI.text(f"Reynolds number: {reynolds:.1f}")
-        window.GUI.text("")
-
-        window.GUI.text("Simulation Parameters:")
-        new_velocity = window.GUI.slider_float("Initial Velocity", initial_velocity, 0.01, 0.3)
-        if abs(new_velocity - initial_velocity) > 0.001:
-            initial_velocity = new_velocity
-
-        new_tau = window.GUI.slider_float("Relaxation Time (tau)", current_tau, 0.51, 2.0)
-        if abs(new_tau - current_tau) > 0.001:
-            current_tau = new_tau
-
-        window.GUI.text("")
-        if window.GUI.button("Reset Simulation"):
-            print(f"Resetting with velocity={initial_velocity:.3f}, tau={current_tau:.3f}")
-            init_simulation(initial_velocity)
-            frame_count = 0
-            start_time = time.time()
-
-        if window.GUI.button("Pause/Resume"):
-            paused = not paused
-
-        window.GUI.end()
-
         window.show()
 
     print(f"\nSimulation finished!")
-    print(f"Total steps: {frame_count}")
-    print(f"Average FPS: {fps:.1f}")
 
 if __name__ == "__main__":
     main()
