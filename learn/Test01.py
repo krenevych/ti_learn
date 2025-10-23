@@ -14,13 +14,19 @@ cylinder_r = 33     # Cylinder radius
 
 initial_velocity = 0.1
 
+cs2 = 1.0 / 3.0     # c_s^2
+cs4 = cs2 * cs2     # c_s^4 = (1/3)^2 = 1/9
+
+print(0.5 / cs4)
+print(0.5 / cs2)
+
 # D2Q9 lattice parameters
 Q = 9
 #                     0  1  2  3   4   5   6   7   8
 cxs      = ti.Vector([0, 0, 1, 1,  1,  0, -1, -1, -1])
 cys      = ti.Vector([0, 1, 1, 0, -1, -1, -1,  0,  1])
 opposite = ti.Vector([0, 5, 6, 7,  8,  1,  2,  3,  4])
-weights  = ti.Vector([4/9, 1/9, 1/36, 1/9, 1/36, 1/9, 1/36, 1/9, 1/36])
+w        = ti.Vector([4 / 9, 1 / 9, 1 / 36, 1 / 9, 1 / 36, 1 / 9, 1 / 36, 1 / 9, 1 / 36])
 
 # Taichi fields
 f         = ti.field(dtype=ti.f32, shape=(Nx, Ny, Q))
@@ -59,12 +65,12 @@ def init_simulation(initial_velocity: ti.f32):
             rho_local = 1.0
             ux_local = initial_velocity
             uy_local = 0.0
+            dot_u = ux_local ** 2 + uy_local ** 2
 
             for q in ti.static(range(Q)):
                 cu = cxs[q] * ux_local + cys[q] * uy_local
-                f[i, j, q] = rho_local * weights[q] * (
-                    1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * (ux_local**2 + uy_local**2)
-                )
+                f[i, j, q] = rho_local * w[q] * (1.0 + cu / cs2 + 0.5 * cu * cu / cs4 - 0.5 * dot_u / cs2)
+
 
 @ti.kernel
 def streaming():
@@ -105,13 +111,12 @@ def collision(relaxation_tau: ti.f32):
             rho_local = rho[i, j]
             ux_local = ux[i, j]
             uy_local = uy[i, j]
+            dot_u = ux_local ** 2 + uy_local ** 2
 
             for q in ti.static(range(Q)):
-                cu = cxs[q] * ux_local + cys[q] * uy_local
-                F_eq = rho_local * weights[q] * (
-                    1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * (ux_local**2 + uy_local**2)
-                )
-                f[i, j, q] = f_new[i, j, q] - (1.0 / relaxation_tau) * (f_new[i, j, q] - F_eq)
+                cu = cxs[q] * ux_local + cys[q] * uy_local  # cu = dot(c_i, u)
+                f_eq = rho_local * w[q] * (1.0 + cu / cs2 + 0.5 * cu * cu / cs4 - 0.5 * dot_u / cs2)
+                f[i, j, q] = f_new[i, j, q] - (1.0 / relaxation_tau) * (f_new[i, j, q] - f_eq)
 
 @ti.kernel
 def apply_boundary():
@@ -211,9 +216,6 @@ def prepare_display(vmin: ti.f32, vmax: ti.f32):
 
 def main():
     """Main simulation loop with real-time visualization"""
-    # Simulation control parameters
-
-
     print("Initializing LBM simulation with Taichi...")
     init_simulation(initial_velocity)
 
