@@ -17,9 +17,6 @@ initial_velocity = 0.1
 cs2 = 1.0 / 3.0     # c_s^2
 cs4 = cs2 * cs2     # c_s^4 = (1/3)^2 = 1/9
 
-print(0.5 / cs4)
-print(0.5 / cs2)
-
 # D2Q9 lattice parameters
 Q = 9
 #                     0  1  2  3   4   5   6   7   8
