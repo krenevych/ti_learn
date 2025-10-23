@@ -212,7 +212,7 @@ def prepare_display(mode: ti.i32, vmin: ti.f32, vmax: ti.f32):
 def main():
     """Main simulation loop with real-time visualization"""
     # Simulation control parameters
-    initial_velocity = 0.1
+    initial_velocity = 0.21
     current_tau = tau
     paused = False
 
@@ -224,39 +224,20 @@ def main():
     canvas = window.get_canvas()
 
     frame_count = 0
-    start_time = time.time()
     vis_mode = 1  # 0: velocity, 1: vorticity, 2: density, 3: ux
-    mode_names = ["Velocity Magnitude", "Vorticity", "Density", "Horizontal Velocity"]
 
     print("Starting simulation...")
     print("Controls:")
-    print("  1 - Velocity magnitude view")
-    print("  2 - Vorticity view")
-    print("  3 - Density view")
-    print("  4 - Horizontal velocity view")
-    print("  SPACE - Pause/Resume")
     print("  R - Reset simulation")
     print("  ESC - Exit")
 
     while window.running:
         # Handle keyboard input
         if window.get_event(ti.ui.PRESS):
-            if window.event.key == '1':
-                vis_mode = 0
-            elif window.event.key == '2':
-                vis_mode = 1
-            elif window.event.key == '3':
-                vis_mode = 2
-            elif window.event.key == '4':
-                vis_mode = 3
-            elif window.event.key == ti.ui.SPACE:
-                paused = not paused
-                print(f"Simulation {'paused' if paused else 'resumed'}")
-            elif window.event.key == 'r' or window.event.key == 'R':
+            if window.event.key == 'r' or window.event.key == 'R':
                 print("Resetting simulation...")
                 init_simulation(initial_velocity)
                 frame_count = 0
-                start_time = time.time()
             elif window.event.key == ti.ui.ESCAPE:
                 break
 
@@ -272,16 +253,7 @@ def main():
         # Update visualization every frame
         compute_vorticity()
 
-        # Set visualization range based on mode
-        if vis_mode == 0:  # Velocity magnitude
-            vmin, vmax = 0.0, 0.15
-        elif vis_mode == 1:  # Vorticity
-            vmin, vmax = -0.02, 0.02
-        elif vis_mode == 2:  # Density
-            vmin, vmax = 0.95, 1.05
-        elif vis_mode == 3:  # Horizontal velocity
-            vmin, vmax = 0.0, 0.15
-
+        vmin, vmax = -0.02, 0.02
         prepare_display(vis_mode, vmin, vmax)
 
         # Display the field
