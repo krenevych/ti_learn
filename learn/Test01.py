@@ -12,6 +12,8 @@ Nt = 100000         # Number of time steps
 tau = 0.6           # Relaxation time
 cylinder_r = 33     # Cylinder radius
 
+initial_velocity = 0.1
+
 # D2Q9 lattice parameters
 Q = 9
 #                     0  1  2  3   4   5   6   7   8
@@ -32,9 +34,8 @@ vorticity = ti.field(dtype=ti.f32, shape=(Nx, Ny))
 # Visualization field (RGB)
 display_field = ti.Vector.field(3, dtype=ti.f32, shape=(Nx, Ny))
 
-@ti.kernel
-def init_simulation(initial_velocity: ti.f32):
-    """Initialize the simulation fields"""
+@ti.func
+def mark_obstacle():
     # Initialize cylinder (obstacle)
     cx, cy = Nx // 4, Ny // 2
     for i, j in ti.ndrange(Nx, Ny):
@@ -43,9 +44,18 @@ def init_simulation(initial_velocity: ti.f32):
         else:
             cylinder[i, j] = 0
 
+@ti.func
+def is_obstacle(i, j):
+    return cylinder[i, j] == 1
+
+@ti.kernel
+def init_simulation(initial_velocity: ti.f32):
+    """Initialize the simulation fields"""
+    mark_obstacle()
+
     # Initialize distribution functions with equilibrium for uniform flow
     for i, j in ti.ndrange(Nx, Ny):
-        if cylinder[i, j] == 0:
+        if not is_obstacle(i, j):
             rho_local = 1.0
             ux_local = initial_velocity
             uy_local = 0.0
@@ -83,8 +93,7 @@ def compute_macro():
             ux[i, j] /= rho[i, j]
             uy[i, j] /= rho[i, j]
 
-        # Set velocity to zero inside cylinder
-        if cylinder[i, j] == 1:
+        if is_obstacle(i, j):  # Set velocity to zero inside cylinder
             ux[i, j] = 0.0
             uy[i, j] = 0.0
 
@@ -92,7 +101,7 @@ def compute_macro():
 def collision(relaxation_tau: ti.f32):
     """Collision step with BGK operator"""
     for i, j in ti.ndrange(Nx, Ny):
-        if cylinder[i, j] == 0:
+        if not is_obstacle(i, j):
             rho_local = rho[i, j]
             ux_local = ux[i, j]
             uy_local = uy[i, j]
@@ -108,7 +117,7 @@ def collision(relaxation_tau: ti.f32):
 def apply_boundary():
     """Apply bounce-back boundary condition on cylinder"""
     for i, j in ti.ndrange(Nx, Ny):
-        if cylinder[i, j] == 1:
+        if is_obstacle(i, j):
             for q in ti.static(range(Q)):
                 f[i, j, q] = f_new[i, j, opposite[q]]
 
@@ -116,7 +125,9 @@ def apply_boundary():
 def compute_vorticity():
     """Compute vorticity field"""
     for i, j in ti.ndrange(Nx, Ny):
-        if cylinder[i, j] == 0:
+        if is_obstacle(i, j):
+            vorticity[i, j] = 0.0
+        else:
             ip = (i + 1) % Nx
             im = (i - 1) % Nx
             jp = (j + 1) % Ny
@@ -125,8 +136,7 @@ def compute_vorticity():
             dux_dy = (ux[i, jp] - ux[i, jm]) / 2.0
             duy_dx = (uy[ip, j] - uy[im, j]) / 2.0
             vorticity[i, j] = duy_dx - dux_dy
-        else:
-            vorticity[i, j] = 0.0
+
 
 @ti.func
 def colormap_jet(value: ti.f32) -> ti.math.vec3:
@@ -182,18 +192,10 @@ def colormap_rainbow(value: ti.f32) -> ti.math.vec3:
     return ti.math.vec3(r, g, b)
 
 @ti.kernel
-def prepare_display(mode: ti.i32, vmin: ti.f32, vmax: ti.f32):
+def prepare_display(vmin: ti.f32, vmax: ti.f32):
     """Prepare visualization field based on mode with colormap"""
     for i, j in ti.ndrange(Nx, Ny):
-        value = 0.0
-        if mode == 0:  # Velocity magnitude
-            value = ti.sqrt(ux[i, j]**2 + uy[i, j]**2)
-        elif mode == 1:  # Vorticity
-            value = vorticity[i, j]
-        elif mode == 2:  # Density
-            value = rho[i, j]
-        elif mode == 3:  # Horizontal velocity
-            value = ux[i, j]
+        value = vorticity[i, j]
 
         # Normalize to [0, 1] range
         normalized = 0.5
@@ -202,19 +204,15 @@ def prepare_display(mode: ti.i32, vmin: ti.f32, vmax: ti.f32):
             normalized = ti.max(0.0, ti.min(1.0, normalized))
 
         # Apply colormap
-        if cylinder[i, j] == 1:
-            # Mark cylinder as dark grey
-            display_field[i, j] = ti.math.vec3(0.2, 0.2, 0.2)
+        if is_obstacle(i, j):
+            display_field[i, j] = ti.math.vec3(0.2, 0.2, 0.2)  # Mark cylinder as dark grey
         else:
-            # Use rainbow colormap for better visibility
-            display_field[i, j] = colormap_rainbow(normalized)
+            display_field[i, j] = colormap_rainbow(normalized)  # Use rainbow colormap for better visibility
 
 def main():
     """Main simulation loop with real-time visualization"""
     # Simulation control parameters
-    initial_velocity = 0.21
-    current_tau = tau
-    paused = False
+
 
     print("Initializing LBM simulation with Taichi...")
     init_simulation(initial_velocity)
@@ -224,8 +222,6 @@ def main():
     canvas = window.get_canvas()
 
     frame_count = 0
-    vis_mode = 1  # 0: velocity, 1: vorticity, 2: density, 3: ux
-
     print("Starting simulation...")
     print("Controls:")
     print("  R - Reset simulation")
@@ -242,19 +238,18 @@ def main():
                 break
 
         # Perform multiple simulation steps per frame for speed (only if not paused)
-        if not paused:
-            for _ in range(10):
-                streaming()
-                compute_macro()
-                collision(current_tau)
-                apply_boundary()
-                frame_count += 1
+        for _ in range(10):
+            streaming()
+            compute_macro()
+            collision(tau)
+            apply_boundary()
+            frame_count += 1
 
         # Update visualization every frame
         compute_vorticity()
 
         vmin, vmax = -0.02, 0.02
-        prepare_display(vis_mode, vmin, vmax)
+        prepare_display(vmin, vmax)
 
         # Display the field
         canvas.set_image(display_field)
