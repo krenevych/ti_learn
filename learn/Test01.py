@@ -1,6 +1,4 @@
 import taichi as ti
-import numpy as np
-import time
 
 # Initialize Taichi with GPU backend
 # ti.init(arch=ti.gpu)
@@ -12,7 +10,7 @@ Nt = 100000         # Number of time steps
 tau = 0.6           # Relaxation time
 cylinder_r = 33     # Cylinder radius
 
-initial_velocity = 0.1
+initial_velocity = ti.Vector([0.1, 0.1])
 
 cs2 = 1.0 / 3.0     # c_s^2
 cs4 = cs2 * cs2     # c_s^4 = (1/3)^2 = 1/9
@@ -31,7 +29,7 @@ f_new     = ti.field(dtype=ti.f32, shape=(Nx, Ny, Q))
 rho       = ti.field(dtype=ti.f32, shape=(Nx, Ny))
 ux        = ti.field(dtype=ti.f32, shape=(Nx, Ny))
 uy        = ti.field(dtype=ti.f32, shape=(Nx, Ny))
-cylinder  = ti.field(dtype=ti.i32, shape=(Nx, Ny))
+solid     = ti.field(dtype=ti.i32,  shape=(Nx, Ny))
 vorticity = ti.field(dtype=ti.f32, shape=(Nx, Ny))
 
 # Visualization field (RGB)
@@ -44,27 +42,23 @@ def mark_obstacle():
     cx1, cy1 = 0.8 * Nx // 4, 2.8 * Ny // 4
     for i, j in ti.ndrange(Nx, Ny):
         if (i - cx) ** 2 + (j - cy) ** 2 <= cylinder_r ** 2:
-            cylinder[i, j] = 1
+            solid[i, j] = 1
         elif (i - cx1) ** 2 + (j - cy1) ** 2 <= cylinder_r ** 2:
-            cylinder[i, j] = 1
+            solid[i, j] = 1
         else:
-            cylinder[i, j] = 0
-
-@ti.func
-def is_obstacle(i, j):
-    return cylinder[i, j] == 1
+            solid[i, j] = 0
 
 @ti.kernel
-def init_simulation(initial_velocity: ti.f32):
+def init_simulation(initial_velocity: ti.types.vector(2, float)):
     """Initialize the simulation fields"""
     mark_obstacle()
 
     # Initialize distribution functions with equilibrium for uniform flow
     for i, j in ti.ndrange(Nx, Ny):
-        if not is_obstacle(i, j):
+        if not solid[i, j]:
             rho_local = 1.0
-            ux_local = initial_velocity
-            uy_local = 0.0
+            ux_local = initial_velocity[0]
+            uy_local = initial_velocity[1]
             dot_u = ux_local ** 2 + uy_local ** 2
 
             for q in ti.static(range(Q)):
@@ -74,11 +68,23 @@ def init_simulation(initial_velocity: ti.f32):
 
 @ti.kernel
 def streaming():
-    """Streaming step with periodic boundary conditions"""
-    for i, j, q in ti.ndrange(Nx, Ny, Q):
-        ip = (i + cxs[q]) % Nx
-        jp = (j + cys[q]) % Ny
-        f_new[ip, jp, q] = f[i, j, q]
+    """Streaming step with taking into account of boundary conditions"""
+    for i, j in ti.ndrange(Nx, Ny):
+        if not solid[i, j]:
+            for q in ti.static(range(Q)):
+                ip = i + cxs[q]
+                jp = j + cys[q]
+
+                # ip %= Nx  # зациклюємо потік по x
+                jp %= Ny  # зациклюємо потік по y
+
+                # вихід за межі домену => bounce-back на лінку
+                out_of_bounds = (ip < 0) or (ip >= Nx) or (jp < 0) or (jp >= Ny)
+
+                if out_of_bounds or solid[ip, jp]:
+                    f_new[i, j, opposite[q]] = f[i, j, q]
+                else:
+                    f_new[ip, jp, q] = f[i, j, q]
 
 @ti.kernel
 def compute_macro():
@@ -99,7 +105,7 @@ def compute_macro():
             ux[i, j] /= rho[i, j]
             uy[i, j] /= rho[i, j]
 
-        if is_obstacle(i, j):  # Set velocity to zero inside cylinder
+        if solid[i, j]:  # Set velocity to zero inside cylinder
             ux[i, j] = 0.0
             uy[i, j] = 0.0
 
@@ -107,7 +113,7 @@ def compute_macro():
 def collision(relaxation_tau: ti.f32):
     """Collision step with BGK operator"""
     for i, j in ti.ndrange(Nx, Ny):
-        if not is_obstacle(i, j):
+        if not solid[i, j]:
             rho_local = rho[i, j]
             ux_local = ux[i, j]
             uy_local = uy[i, j]
@@ -119,18 +125,10 @@ def collision(relaxation_tau: ti.f32):
                 f[i, j, q] = f_new[i, j, q] - (1.0 / relaxation_tau) * (f_new[i, j, q] - f_eq)
 
 @ti.kernel
-def apply_boundary():
-    """Apply bounce-back boundary condition on cylinder"""
-    for i, j in ti.ndrange(Nx, Ny):
-        if is_obstacle(i, j):
-            for q in ti.static(range(Q)):
-                f[i, j, q] = f_new[i, j, opposite[q]]
-
-@ti.kernel
 def compute_vorticity():
     """Compute vorticity field"""
     for i, j in ti.ndrange(Nx, Ny):
-        if is_obstacle(i, j):
+        if solid[i, j]:
             vorticity[i, j] = 0.0
         else:
             ip = (i + 1) % Nx
@@ -209,7 +207,7 @@ def prepare_display(vmin: ti.f32, vmax: ti.f32):
             normalized = ti.max(0.0, ti.min(1.0, normalized))
 
         # Apply colormap
-        if is_obstacle(i, j):
+        if solid[i, j]:
             display_field[i, j] = ti.math.vec3(0.2, 0.2, 0.2)  # Mark cylinder as dark grey
         else:
             display_field[i, j] = colormap_rainbow(normalized)  # Use rainbow colormap for better visibility
@@ -244,7 +242,6 @@ def main():
             streaming()
             compute_macro()
             collision(tau)
-            apply_boundary()
             frame_count += 1
 
         # Update visualization every frame
