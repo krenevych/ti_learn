@@ -41,8 +41,11 @@ display_field = ti.Vector.field(3, dtype=ti.f32, shape=(Nx, Ny))
 def mark_obstacle():
     # Initialize cylinder (obstacle)
     cx, cy = Nx // 4, Ny // 2
+    cx1, cy1 = 0.8 * Nx // 4, 2.8 * Ny // 4
     for i, j in ti.ndrange(Nx, Ny):
         if (i - cx) ** 2 + (j - cy) ** 2 <= cylinder_r ** 2:
+            cylinder[i, j] = 1
+        elif (i - cx1) ** 2 + (j - cy1) ** 2 <= cylinder_r ** 2:
             cylinder[i, j] = 1
         else:
             cylinder[i, j] = 0
