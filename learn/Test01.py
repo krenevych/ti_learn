@@ -221,7 +221,6 @@ def main():
     window = ti.ui.Window("LBM Simulation - Real-Time", (1200, 400), vsync=False)
     canvas = window.get_canvas()
 
-    frame_count = 0
     print("Starting simulation...")
     print("Controls:")
     print("  R - Reset simulation")
@@ -233,7 +232,6 @@ def main():
             if window.event.key == 'r' or window.event.key == 'R':
                 print("Resetting simulation...")
                 init_simulation(initial_velocity)
-                frame_count = 0
             elif window.event.key == ti.ui.ESCAPE:
                 break
 
@@ -242,7 +240,6 @@ def main():
             streaming()
             compute_macro()
             collision(tau)
-            frame_count += 1
 
         # Update visualization every frame
         compute_vorticity()
