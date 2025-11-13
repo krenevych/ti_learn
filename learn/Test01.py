@@ -142,31 +142,6 @@ def compute_vorticity():
 
 
 @ti.func
-def colormap_jet(value: ti.f32) -> ti.math.vec3:
-    """Jet colormap: blue -> cyan -> green -> yellow -> red"""
-    r, g, b = 0.0, 0.0, 0.0
-
-    if value < 0.0:
-        value = 0.0
-    elif value > 1.0:
-        value = 1.0
-
-    if value < 0.25:
-        b = 1.0
-        g = value / 0.25
-    elif value < 0.5:
-        g = 1.0
-        b = 1.0 - (value - 0.25) / 0.25
-    elif value < 0.75:
-        g = 1.0
-        r = (value - 0.5) / 0.25
-    else:
-        r = 1.0
-        g = 1.0 - (value - 0.75) / 0.25
-
-    return ti.math.vec3(r, g, b)
-
-@ti.func
 def colormap_rainbow(value: ti.f32) -> ti.math.vec3:
     """Rainbow colormap: violet -> blue -> green -> yellow -> red"""
     r, g, b = 0.0, 0.0, 0.0
